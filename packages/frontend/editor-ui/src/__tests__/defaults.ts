@@ -11,6 +11,7 @@ export const defaultSettings: FrontendSettings = {
 	},
 	allowedModules: {},
 	communityNodesEnabled: false,
+	unverifiedCommunityNodesEnabled: true,
 	defaultLocale: '',
 	endpointForm: '',
 	endpointFormTest: '',
@@ -23,7 +24,9 @@ export const defaultSettings: FrontendSettings = {
 	enterprise: {
 		sharing: false,
 		ldap: false,
+		oidc: false,
 		saml: false,
+		mfaEnforcement: false,
 		logStreaming: false,
 		debugInEditor: false,
 		advancedExecutionFilters: false,
@@ -31,20 +34,19 @@ export const defaultSettings: FrontendSettings = {
 		sourceControl: false,
 		auditLogs: false,
 		showNonProdBanner: false,
-		workflowHistory: false,
 		binaryDataS3: false,
 		externalSecrets: false,
 		workerView: false,
 		advancedPermissions: false,
 		apiKeyScopes: false,
+		workflowDiffs: false,
+		provisioning: true,
 		projects: {
 			team: {
 				limit: 1,
 			},
 		},
-	},
-	expressions: {
-		evaluator: 'tournament',
+		customRoles: false,
 	},
 	executionMode: 'regular',
 	isMultiMain: false,
@@ -65,6 +67,7 @@ export const defaultSettings: FrontendSettings = {
 		debug: false,
 		disableSessionRecording: false,
 		enabled: false,
+		proxy: '',
 	},
 	publicApi: {
 		enabled: false,
@@ -80,6 +83,7 @@ export const defaultSettings: FrontendSettings = {
 	sso: {
 		ldap: { loginEnabled: false, loginLabel: '' },
 		saml: { loginEnabled: false, loginLabel: '' },
+		oidc: { loginEnabled: false, loginUrl: '', callbackUrl: '' },
 	},
 	telemetry: {
 		enabled: false,
@@ -99,11 +103,18 @@ export const defaultSettings: FrontendSettings = {
 	},
 	versionCli: '',
 	nodeJsVersion: '',
+	nodeEnv: '',
 	concurrency: -1,
+	isNativePythonRunnerEnabled: false,
 	versionNotifications: {
 		enabled: true,
 		endpoint: '',
 		infoUrl: '',
+		whatsNewEnabled: true,
+		whatsNewEndpoint: '',
+	},
+	dataTables: {
+		maxSize: 0,
 	},
 	workflowCallerPolicyDefaultOption: 'any',
 	workflowTagsDisabled: false,
@@ -120,9 +131,14 @@ export const defaultSettings: FrontendSettings = {
 	previewMode: false,
 	mfa: {
 		enabled: false,
+		enforced: false,
 	},
 	askAi: {
 		enabled: false,
+	},
+	aiBuilder: {
+		enabled: false,
+		setup: false,
 	},
 	workflowHistory: {
 		pruneTime: 0,
@@ -133,33 +149,23 @@ export const defaultSettings: FrontendSettings = {
 	},
 	aiAssistant: {
 		enabled: false,
+		setup: false,
 	},
 	aiCredits: {
 		enabled: false,
 		credits: 0,
 	},
 	easyAIWorkflowOnboarded: false,
-	partialExecution: {
-		version: 1,
-	},
 	folders: {
 		enabled: false,
 	},
-	insights: {
-		enabled: false,
-		summary: true,
-		dashboard: false,
-		dateRanges: [
-			{ key: 'day', licensed: true, granularity: 'hour' },
-			{ key: 'week', licensed: true, granularity: 'day' },
-			{ key: '2weeks', licensed: true, granularity: 'day' },
-			{ key: 'month', licensed: false, granularity: 'day' },
-			{ key: 'quarter', licensed: false, granularity: 'week' },
-			{ key: '6months', licensed: false, granularity: 'week' },
-			{ key: 'year', licensed: false, granularity: 'week' },
-		],
+	evaluation: {
+		quota: 0,
 	},
-	logsView: {
-		enabled: false,
+	activeModules: [],
+	envFeatureFlags: {},
+	dynamicBanners: {
+		endpoint: 'https://api.n8n.io/api/banners',
+		enabled: true,
 	},
 };

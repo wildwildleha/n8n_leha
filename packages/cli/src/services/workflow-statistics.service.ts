@@ -1,5 +1,6 @@
+import { Logger } from '@n8n/backend-common';
+import { StatisticsNames, WorkflowStatisticsRepository } from '@n8n/db';
 import { Service } from '@n8n/di';
-import { Logger } from 'n8n-core';
 import type {
 	ExecutionStatus,
 	INode,
@@ -8,8 +9,6 @@ import type {
 	WorkflowExecuteMode,
 } from 'n8n-workflow';
 
-import { StatisticsNames } from '@/databases/entities/workflow-statistics';
-import { WorkflowStatisticsRepository } from '@/databases/repositories/workflow-statistics.repository';
 import { EventService } from '@/events/event.service';
 import { UserService } from '@/services/user.service';
 import { TypedEmitter } from '@/typed-emitter';
@@ -43,6 +42,9 @@ const isModeRootExecution = {
 	internal: false,
 
 	manual: false,
+
+	// n8n Chat hub messages
+	chat: false,
 } satisfies Record<WorkflowExecuteMode, boolean>;
 
 type WorkflowStatisticsEvents = {
@@ -114,8 +116,11 @@ export class WorkflowStatisticsService extends TypedEmitter<WorkflowStatisticsEv
 
 			if (name === StatisticsNames.productionSuccess && upsertResult === 'insert') {
 				const project = await this.ownershipService.getWorkflowProjectCached(workflowId);
+				let userId: string | null = null;
+
 				if (project.type === 'personal') {
 					const owner = await this.ownershipService.getPersonalProjectOwnerCached(project.id);
+					userId = owner?.id ?? null;
 
 					if (owner && !owner.settings?.userActivated) {
 						await this.userService.updateSettings(owner.id, {
@@ -124,13 +129,13 @@ export class WorkflowStatisticsService extends TypedEmitter<WorkflowStatisticsEv
 							userActivatedAt: runData.startedAt.getTime(),
 						});
 					}
-
-					this.eventService.emit('first-production-workflow-succeeded', {
-						projectId: project.id,
-						workflowId,
-						userId: owner!.id,
-					});
 				}
+
+				this.eventService.emit('first-production-workflow-succeeded', {
+					projectId: project.id,
+					workflowId,
+					userId,
+				});
 			}
 		} catch (error) {
 			this.logger.debug('Unable to fire first workflow success telemetry event');

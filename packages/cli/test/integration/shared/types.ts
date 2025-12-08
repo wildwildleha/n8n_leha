@@ -1,13 +1,9 @@
+import type { CredentialPayload } from '@n8n/backend-test-utils';
 import type { BooleanLicenseFeature, NumericLicenseFeature } from '@n8n/constants';
+import type { CredentialsEntity, Project, User, ICredentialsDb } from '@n8n/db';
 import type { Application } from 'express';
 import type { Server } from 'http';
-import type { ICredentialDataDecryptedObject } from 'n8n-workflow';
 import type TestAgent from 'supertest/lib/agent';
-
-import type { CredentialsEntity } from '@/databases/entities/credentials-entity';
-import type { Project } from '@/databases/entities/project';
-import type { User } from '@/databases/entities/user';
-import type { ICredentialsDb } from '@/types-db';
 
 import type { LicenseMocker } from './license';
 
@@ -46,12 +42,25 @@ type EndpointGroup =
 	| 'evaluation'
 	| 'ai'
 	| 'folder'
-	| 'insights';
+	| 'insights'
+	| 'module-settings'
+	| 'data-table'
+	| 'third-party-licenses'
+	| 'mcp';
+
+type ModuleName =
+	| 'insights'
+	| 'external-secrets'
+	| 'community-packages'
+	| 'data-table'
+	| 'mcp'
+	| 'dynamic-credentials';
 
 export interface SetupProps {
 	endpointGroups?: EndpointGroup[];
 	enabledFeatures?: BooleanLicenseFeature[];
 	quotas?: Partial<{ [K in NumericLicenseFeature]: number }>;
+	modules?: ModuleName[];
 }
 
 export type SuperAgentTest = TestAgent;
@@ -67,13 +76,6 @@ export interface TestServer {
 	restlessAgent: TestAgent;
 	license: LicenseMocker;
 }
-
-export type CredentialPayload = {
-	name: string;
-	type: string;
-	data: ICredentialDataDecryptedObject;
-	isManaged?: boolean;
-};
 
 export type SaveCredentialFunction = (
 	credentialPayload: CredentialPayload,

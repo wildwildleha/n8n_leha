@@ -1,14 +1,15 @@
+import { inTest, Logger } from '@n8n/backend-common';
+import { InstanceSettingsConfig } from '@n8n/config';
+import type { InstanceRole, InstanceType } from '@n8n/constants';
 import { Memoized } from '@n8n/decorators';
 import { Service } from '@n8n/di';
 import { createHash, randomBytes } from 'crypto';
 import { ApplicationError, jsonParse, ALPHABET, toResult } from 'n8n-workflow';
 import { customAlphabet } from 'nanoid';
 import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'path';
 
-import { Logger } from '@/logging/logger';
-
-import { InstanceSettingsConfig } from './instance-settings-config';
 import { WorkerMissingEncryptionKey } from './worker-missing-encryption-key.error';
 
 const nanoid = customAlphabet(ALPHABET, 16);
@@ -22,12 +23,6 @@ interface WritableSettings {
 }
 
 type Settings = ReadOnlySettings & WritableSettings;
-
-type InstanceRole = 'unset' | 'leader' | 'follower';
-
-export type InstanceType = 'main' | 'webhook' | 'worker';
-
-const inTest = process.env.NODE_ENV === 'test';
 
 @Service()
 export class InstanceSettings {
@@ -57,20 +52,21 @@ export class InstanceSettings {
 	 */
 	readonly instanceId: string;
 
+	readonly hmacSignatureSecret: string;
+
 	readonly instanceType: InstanceType;
 
 	constructor(
 		private readonly config: InstanceSettingsConfig,
 		private readonly logger: Logger,
 	) {
-		const command = process.argv[2];
-		this.instanceType = ['webhook', 'worker'].includes(command)
-			? (command as InstanceType)
-			: 'main';
+		const command = process.argv[2] as InstanceType;
+		this.instanceType = ['webhook', 'worker'].includes(command) ? command : 'main';
 
-		this.hostId = `${this.instanceType}-${nanoid()}`;
+		this.hostId = `${this.instanceType}-${this.isDocker ? os.hostname() : nanoid()}`;
 		this.settings = this.loadOrCreate();
 		this.instanceId = this.generateInstanceId();
+		this.hmacSignatureSecret = this.getOrGenerateHmacSignatureSecret();
 	}
 
 	/**
@@ -84,12 +80,11 @@ export class InstanceSettings {
 	instanceRole: InstanceRole = 'unset';
 
 	/**
-	 * Transient ID of this n8n instance, for scaling mode.
-	 * Reset on restart. Do not confuse with `instanceId`.
+	 * ID of this n8n instance. Hostname-based when in Docker, or nanoID-based
+	 * otherwise (resets on restart). Do not confuse with `instanceId`.
 	 *
-	 * @example 'main-bnxa1riryKUNHtln'
-	 * @example 'worker-nDJR0FnSd2Vf6DB5'
-	 * @example 'webhook-jxQ7AO8IzxEtfW1F'
+	 * @example 'main-bnxa1riryKUNHtln' (local)
+	 * @example 'main-6bf523178bc6' (Docker)
 	 */
 	readonly hostId: string;
 
@@ -180,7 +175,7 @@ export class InstanceSettings {
 	 * settings file with an auto-generated encryption key.
 	 */
 	private loadOrCreate(): Settings {
-		const encryptionKeyFromEnv = process.env.N8N_ENCRYPTION_KEY;
+		const encryptionKeyFromEnv = this.config.encryptionKey || undefined;
 		if (existsSync(this.settingsFile)) {
 			const content = readFileSync(this.settingsFile, 'utf8');
 			this.ensureSettingsFilePermissions();
@@ -189,7 +184,7 @@ export class InstanceSettings {
 				errorMessage: `Error parsing n8n-config file "${this.settingsFile}". It does not seem to be valid JSON.`,
 			});
 
-			if (!inTest) console.info(`User settings loaded from: ${this.settingsFile}`);
+			if (!inTest) this.logger.debug(`User settings loaded from: ${this.settingsFile}`);
 
 			const { encryptionKey, tunnelSubdomain } = settings;
 
@@ -233,6 +228,14 @@ export class InstanceSettings {
 			.digest('hex');
 	}
 
+	private getOrGenerateHmacSignatureSecret() {
+		const hmacSignatureSecretFromEnv = process.env.N8N_HMAC_SIGNATURE_SECRET;
+		if (hmacSignatureSecretFromEnv) return hmacSignatureSecretFromEnv;
+
+		const { encryptionKey } = this;
+		return createHash('sha256').update(`hmac-signature:${encryptionKey}`).digest('hex');
+	}
+
 	private save(settings: Settings) {
 		this.settings = settings;
 		writeFileSync(this.settingsFile, JSON.stringify(this.settings, null, '\t'), {
@@ -270,19 +273,15 @@ export class InstanceSettings {
 	 * Ensures that the settings file has the r/w permissions only for the owner.
 	 */
 	private ensureSettingsFilePermissions() {
-		// If the flag is explicitly set to false, skip the check
-		if (this.enforceSettingsFilePermissions.isSet && !this.enforceSettingsFilePermissions.enforce) {
-			return;
-		}
-		if (this.isWindows()) {
-			// Ignore windows as it does not support chmod. We have already logged a warning
-			return;
-		}
+		if (!this.enforceSettingsFilePermissions.enforce) return;
+
+		if (this.isWindows()) return; // ignore windows as it does not support chmod
 
 		const permissionsResult = toResult(() => {
 			const stats = statSync(this.settingsFile);
 			return stats?.mode & 0o777;
 		});
+
 		// If we can't determine the permissions, log a warning and skip the check
 		if (!permissionsResult.ok) {
 			this.logger.warn(
@@ -292,32 +291,22 @@ export class InstanceSettings {
 		}
 
 		const arePermissionsCorrect = permissionsResult.result === 0o600;
-		if (arePermissionsCorrect) {
-			return;
-		}
 
-		// If the permissions are incorrect and the flag is not set, log a warning
-		if (!this.enforceSettingsFilePermissions.isSet) {
-			this.logger.warn(
-				`Permissions 0${permissionsResult.result.toString(8)} for n8n settings file ${this.settingsFile} are too wide. This is ignored for now, but in the future n8n will attempt to change the permissions automatically. To automatically enforce correct permissions now set N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true (recommended), or turn this check off set N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false.`,
-			);
-			// The default is false so we skip the enforcement for now
-			return;
-		}
+		if (arePermissionsCorrect) return;
 
-		if (this.enforceSettingsFilePermissions.enforce) {
+		this.logger.error(
+			`Permissions 0${permissionsResult.result.toString(8)} for n8n settings file ${this.settingsFile} are too wide. Changing permissions to 0600..`,
+		);
+
+		const chmodResult = toResult(() => chmodSync(this.settingsFile, 0o600));
+
+		if (!chmodResult.ok) {
+			// Some filesystems don't support permissions. In this case we log the
+			// error and ignore it. We might want to prevent the app startup in the
+			// future in this case.
 			this.logger.warn(
-				`Permissions 0${permissionsResult.result.toString(8)} for n8n settings file ${this.settingsFile} are too wide. Changing permissions to 0600..`,
+				`Could not enforce settings file permissions: ${chmodResult.error.message}. To skip this check, set N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false.`,
 			);
-			const chmodResult = toResult(() => chmodSync(this.settingsFile, 0o600));
-			if (!chmodResult.ok) {
-				// Some filesystems don't support permissions. In this case we log the
-				// error and ignore it. We might want to prevent the app startup in the
-				// future in this case.
-				this.logger.warn(
-					`Could not enforce settings file permissions: ${chmodResult.error.message}. To skip this check, set N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false.`,
-				);
-			}
 		}
 	}
 

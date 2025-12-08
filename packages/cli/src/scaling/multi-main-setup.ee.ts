@@ -1,10 +1,10 @@
+import { Logger } from '@n8n/backend-common';
 import { GlobalConfig } from '@n8n/config';
+import { Time } from '@n8n/constants';
 import { MultiMainMetadata } from '@n8n/decorators';
 import { Container, Service } from '@n8n/di';
-import { InstanceSettings, Logger } from 'n8n-core';
+import { InstanceSettings } from 'n8n-core';
 
-import config from '@/config';
-import { Time } from '@/constants';
 import { Publisher } from '@/scaling/pubsub/publisher.service';
 import { RedisClientService } from '@/services/redis-client.service';
 import { TypedEmitter } from '@/typed-emitter';
@@ -44,10 +44,10 @@ export class MultiMainSetup extends TypedEmitter<MultiMainEvents> {
 
 	private readonly leaderKeyTtl = this.globalConfig.multiMainSetup.ttl;
 
-	private leaderCheckInterval: NodeJS.Timer | undefined;
+	private leaderCheckInterval: NodeJS.Timeout | undefined;
 
 	async init() {
-		const prefix = config.getEnv('redis.prefix');
+		const prefix = this.globalConfig.redis.prefix;
 		const validPrefix = this.redisClientService.toValidPrefix(prefix);
 		this.leaderKey = validPrefix + ':main_instance_leader';
 
@@ -58,6 +58,7 @@ export class MultiMainSetup extends TypedEmitter<MultiMainEvents> {
 		}, this.globalConfig.multiMainSetup.interval * Time.seconds.toMilliseconds);
 	}
 
+	// @TODO: Use `@OnShutdown()` decorator
 	async shutdown() {
 		clearInterval(this.leaderCheckInterval);
 
@@ -117,7 +118,7 @@ export class MultiMainSetup extends TypedEmitter<MultiMainEvents> {
 		);
 
 		if (keySetSuccessfully) {
-			this.logger.debug(`[Instance ID ${hostId}] Leader is now this instance`);
+			this.logger.info(`[Instance ID ${hostId}] Leader is now this instance`);
 
 			this.instanceSettings.markAsLeader();
 

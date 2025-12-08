@@ -1,4 +1,4 @@
-import type { IDataObject, IExecuteFunctions, INode } from 'n8n-workflow';
+import type { IDataObject, INode } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import pgPromise from 'pg-promise';
 
@@ -18,7 +18,6 @@ import {
 	convertValuesToJsonWithPgp,
 	hasJsonDataTypeInSchema,
 	evaluateExpression,
-	addExecutionHints,
 } from '../../v2/helpers/utils';
 
 const node: INode = {
@@ -536,9 +535,9 @@ describe('Test PostgresV2, convertArraysToPostgresFormat', () => {
 			},
 		];
 
-		convertArraysToPostgresFormat(item, schema, node, 0);
+		const result = convertArraysToPostgresFormat(item, schema, node, 0);
 
-		expect(item).toEqual({
+		expect(result).toEqual({
 			jsonb_array: '{"{\\"key\\":\\"value44\\"}"}',
 			json_array: '{"{\\"key\\":\\"value54\\"}"}',
 			int_array: '{1,2,5}',
@@ -546,39 +545,29 @@ describe('Test PostgresV2, convertArraysToPostgresFormat', () => {
 			bool_array: '{"true","false"}',
 		});
 	});
-});
 
-describe('Test PostgresV2, addExecutionHints', () => {
-	it('should add batching insert hint to executeQuery operation', () => {
-		const context = {
-			getNodeParameter: (parameterName: string) => {
-				if (parameterName === 'options.queryBatching') {
-					return 'single';
-				}
-				if (parameterName === 'query') {
-					return 'INSERT INTO my_test_table VALUES (`{{ $json.name }}`)';
-				}
+	it('should not modify the original data object', () => {
+		const referenceItem = {
+			arr: [1, 2, 3],
+		};
+		const item = {
+			arr: [1, 2, 3],
+		};
+		const schema: ColumnInfo[] = [
+			{
+				column_name: 'arr',
+				data_type: 'ARRAY',
+				is_nullable: 'YES',
+				udt_name: '_int4',
+				column_default: null,
 			},
-			addExecutionHints: jest.fn(),
-		} as unknown as IExecuteFunctions;
+		];
 
-		addExecutionHints(context, [{ json: {} }, { json: {} }], 'executeQuery', false);
-		expect(context.addExecutionHints).toHaveBeenCalledWith({
-			message:
-				"Inserts were batched for performance. If you need to preserve item matching, consider changing 'Query batching' to 'Independent' in the options.",
-			location: 'outputPane',
-		});
-	});
-	it('should add run per item hint to select operation', () => {
-		const context = {
-			addExecutionHints: jest.fn(),
-		} as unknown as IExecuteFunctions;
+		const result = convertArraysToPostgresFormat(item, schema, node, 0);
 
-		addExecutionHints(context, [{ json: {} }, { json: {} }], 'select', false);
-		expect(context.addExecutionHints).toHaveBeenCalledWith({
-			location: 'outputPane',
-			message:
-				"This node ran 2 times, once for each input item. To run for the first item only, enable 'execute once' in the node settings",
+		expect(result).toEqual({
+			arr: '{1,2,3}',
 		});
+		expect(item).toEqual(referenceItem);
 	});
 });
