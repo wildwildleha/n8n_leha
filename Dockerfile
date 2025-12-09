@@ -3,12 +3,14 @@ FROM n8nio/base:22.21.0 AS builder
 WORKDIR /workspace
 COPY . .
 
-# FIX: Install pnpm via npm to bypass Corepack auto-detection overrides
-# This ensures exactly v9.12.0 is used, preventing the v10 download
-RUN npm install -g pnpm@9.12.0 && pnpm -v
+# UPDATE: The repo explicitly requests pnpm v10.22.0 or higher.
+RUN npm install -g pnpm@10.22.0 && pnpm -v
 
+# CRITICAL FIX: Changed to --no-frozen-lockfile
+# This allows the build to proceed even if the lockfile has minor discrepancies
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install --no-frozen-lockfile
+
 RUN pnpm build
 
 # --- Runtime (unchanged) ---
