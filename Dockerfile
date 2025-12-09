@@ -1,13 +1,27 @@
 # --- Builder ---
 FROM n8nio/base:22.21.0 AS builder
+
+# FIX 1: Install essential build tools (make, g++, python) required for native modules
+# We check for apk (Alpine) or apt (Debian) to be safe, though n8n is usually Alpine.
+USER root
+RUN if command -v apk > /dev/null; then \
+      apk add --update python3 make g++ git compat-openssl11; \
+    else \
+      apt-get update && apt-get install -y python3 make g++ git; \
+    fi
+
 WORKDIR /workspace
 COPY . .
 
-# UPDATE: The repo explicitly requests pnpm v10.22.0 or higher.
+# FIX 2: Force pnpm v10 as required by the repo
 RUN npm install -g pnpm@10.22.0 && pnpm -v
 
-# CRITICAL FIX: Changed to --no-frozen-lockfile
-# This allows the build to proceed even if the lockfile has minor discrepancies
+# FIX 3: Increase Node memory to prevent crashes during heavy install
+ENV NODE_OPTIONS="--max-old-space-size=8192"
+# Skip downloading heavy Cypress binaries which often fail in CI
+ENV CYPRESS_INSTALL_BINARY=0
+
+# FIX 4: Install with no freeze to handle lockfile mismatches
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --no-frozen-lockfile
 
