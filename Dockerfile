@@ -1,13 +1,11 @@
-
 # --- Builder ---
 FROM n8nio/base:22.21.0 AS builder
 WORKDIR /workspace
 COPY . .
 
-# Use the exact pnpm version your fork expects (from "packageManager" in package.json)
-RUN corepack enable \
- && corepack prepare pnpm@9.12.0 --activate \
- && pnpm -v
+# FIX: Install pnpm via npm to bypass Corepack auto-detection overrides
+# This ensures exactly v9.12.0 is used, preventing the v10 download
+RUN npm install -g pnpm@9.12.0 && pnpm -v
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
