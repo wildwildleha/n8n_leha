@@ -1,28 +1,31 @@
 # --- Builder ---
 FROM n8nio/base:22.21.0 AS builder
 
-# FIX: Install essential build tools (make, g++, python)
-# Removed 'compat-openssl11' as it is not available/needed in this Alpine version
 USER root
+# FIX 1: Install build tools AND symlink python -> python3
+# The symlink ensures that scripts calling 'python' (like node-gyp) work correctly.
 RUN if command -v apk > /dev/null; then \
-      apk add --update python3 make g++ git; \
+      apk add --update python3 make g++ git && \
+      ln -sf python3 /usr/bin/python; \
     else \
-      apt-get update && apt-get install -y python3 make g++ git; \
+      apt-get update && apt-get install -y python3 make g++ git && \
+      ln -sf python3 /usr/bin/python; \
     fi
 
 WORKDIR /workspace
 COPY . .
 
-# FIX: Force pnpm v10 as required by the repo
+# Force pnpm v10 (required by repo)
 RUN npm install -g pnpm@10.22.0 && pnpm -v
 
-# FIX: Increase Node memory to prevent crashes during heavy install
+# Increase Node memory to prevent crashes
 ENV NODE_OPTIONS="--max-old-space-size=8192"
 ENV CYPRESS_INSTALL_BINARY=0
 
-# FIX: Install with no freeze to handle lockfile mismatches
+# FIX 2: Use --ignore-scripts (CRITICAL FIX)
+# This prevents the build from crashing on flaky post-install steps like Cypress or Husky.
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --no-frozen-lockfile
+    pnpm install --no-frozen-lockfile --ignore-scripts
 
 RUN pnpm build
 
